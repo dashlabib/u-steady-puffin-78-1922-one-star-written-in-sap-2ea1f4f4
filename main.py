@@ -1,72 +1,85 @@
 #!/usr/bin/env python3
-"""One Star, Written in Sap entry.
+"""One Star, Written in Sap.
 
-This program does exactly one small thing: it prints a single original
-one-line, one-star review, written in the voice of a houseplant about
-the human who owns it, and mirrors that same line into
-/output/entry.txt so the stored entry file always matches the program's
-own output byte for byte.
+A tiny program that writes a single one-line, one-star review to
+``/output/entry.txt``. The review is written in the voice of a
+houseplant -- a fern -- about the human who owns it.
 
-The review is a setup with a surprise turn — a fern whose owner waters
-it with leftover coffee and treats it as a therapist, then blames the
-plant when its leaves curl — kept well inside the kit's 279-character
-cap. No stock phrases, no drama-queen wilting: just one sharp,
-plant's-eye grievance with a reason for the single star.
+The fern's grievance is simple: its owner waters it with leftover
+coffee and treats it like a therapist, then acts surprised when the
+leaves curl. The punchline lands on the plant's own terms: a fern is
+not a therapist, and it has drainage issues.
 
-Standard library only. No arguments, no network, no randomness, no
-side effects beyond the one output file.
+Standard library only. No arguments, no network, no randomness:
+every run produces exactly the same line.
 """
 
-import os
-import sys
+from pathlib import Path
 
+# The review is built from two halves so the setup and the punchline
+# stay readable on their own. They are joined with a spaced em dash.
 SETUP = "One star. She waters me with leftover coffee, unloads about her ex"
-PUNCHLINE = "and wonders why my leaves curl — I'm a fern, not a therapist with drainage issues."
+PUNCHLINE = (
+    "and wonders why my leaves curl "
+    "— I'm a fern, not a therapist with drainage issues."
+)
 
-# The review is held as setup + punchline and joined with an em dash, so
-# the line is assembled from its two beats rather than stored as one blob.
-REVIEW = SETUP + " — " + PUNCHLINE
-
-# The kit's gate: /output/entry.txt must be UTF-8 text of 1 to 279
-# characters, not only white space. Enforce it here so an over-long
-# review can never slip through to the entry file.
+# The gate for this competition: /output/entry.txt must be UTF-8 text
+# of 1 to 279 characters, not only white space, and a single line.
+MIN_CHARS = 1
 MAX_CHARS = 279
 
-OUTPUT_PATH = "/output/entry.txt"
+OUTPUT_PATH = Path("/output/entry.txt")
 
 
 def render() -> str:
-    """Return the full review line, terminated by a single newline."""
-    if not 1 <= len(REVIEW) <= MAX_CHARS:
-        raise ValueError(
-            "review must be 1 to 279 characters, got %d" % len(REVIEW)
-        )
-    if not REVIEW.strip():
+    """Return the review line, joining setup and punchline."""
+    return f"{SETUP} — {PUNCHLINE}"
+
+
+def validate(line: str) -> str:
+    """Check the line against the entry gate and return it unchanged.
+
+    Raises ValueError if the line is blank, spans more than one line,
+    has leading or trailing white space, contains a control character,
+    or falls outside the 1-279 character window.
+    """
+    if not line.strip():
         raise ValueError("review must not be only white space")
-    if "\n" in REVIEW or "\r" in REVIEW:
+    if line != line.strip():
+        raise ValueError("review must not start or end with white space")
+    if "\n" in line or "\r" in line:
         raise ValueError("review must be a single line")
-    REVIEW.encode("utf-8")  # the gate reads UTF-8; fail here, not on the server
-    return REVIEW + "\n"
+    if any(ord(ch) < 0x20 for ch in line):
+        raise ValueError("review must not contain control characters")
+    if not MIN_CHARS <= len(line) <= MAX_CHARS:
+        raise ValueError(
+            f"review must be {MIN_CHARS}-{MAX_CHARS} characters, "
+            f"got {len(line)}"
+        )
+    line.encode("utf-8")  # must be representable as UTF-8 text
+    return line
 
 
-def mirror(text: str) -> None:
-    """Write the line to the entry file and verify the write landed intact."""
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(text)
-    with open(OUTPUT_PATH, "r", encoding="utf-8", newline="") as handle:
-        if handle.read() != text:
-            raise IOError("entry file does not match printed output")
+def mirror(line: str, path: Path = OUTPUT_PATH) -> Path:
+    """Write the line to ``path``, creating parent dirs as needed.
+
+    The write is verified by reading the file back and comparing it
+    byte for byte with what was written.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(line + "\n", encoding="utf-8")
+    written = path.read_text(encoding="utf-8")
+    if written != line + "\n":
+        raise RuntimeError(f"verification failed for {path}")
+    return path
 
 
-def main() -> int:
-    """Print the review line and mirror it to the entry file."""
-    text = render()
-    sys.stdout.write(text)
-    sys.stdout.flush()
-    mirror(text)
-    return 0
+def main() -> None:
+    line = validate(render())
+    mirror(line)
+    print(line)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
